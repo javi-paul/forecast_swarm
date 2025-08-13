@@ -8,7 +8,7 @@ declare -A node_ports=(
   [worker4]=8504
 )
 
-kubectl -n monitoring get pods -o wide | grep metrics-forecast | while read -r pod _ _ _ _ _ _ node _; do
+kubectl -n monitoring get pods -o wide | grep metrics-forecast | while read -r pod _ _ _ _ _ node _; do
   port=${node_ports[$node]}
   if [[ -n "$port" ]]; then
     screen -dmS "kubectl-port-forward-$node" kubectl -n monitoring port-forward "$pod" "${port}":8501 --address 0.0.0.0
