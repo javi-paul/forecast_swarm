@@ -1,1 +1,3 @@
 helm install kube-prometheus prometheus-community/kube-prometheus-stack   --namespace monitoring --create-namespace   -f prom.yml --debug
+
+screen -dmS prom_port_kube kubectl port-forward prometheus-kube-prometheus-kube-prome-prometheus-0 9090:9090 -n monitoring --address 0.0.0.0
