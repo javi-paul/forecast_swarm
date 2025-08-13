@@ -1,0 +1,33 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2304"
+
+  config.vm.provider "libvirt" do |vb|
+    vb.memory = "16384"
+    vb.cpus = 2
+    vb.storage :file, size: '25G', bus: 'virtio'
+  end
+
+  config.vm.provision "shell", inline: <<-SHELL
+    sudo systemctl disable --now systemd-resolved
+    sudo rm -f /etc/resolv.conf
+    echo -e "nameserver 130.149.7.7\nnameserver 192.129.31.50" | sudo tee /etc/resolv.conf
+
+    echo "alias k=kubectl" | sudo tee -a /root/.bashrc
+  SHELL
+
+  nodes = {
+    "master"  => "192.168.121.10",
+    "worker1" => "192.168.121.11",
+    "worker2" => "192.168.121.12",
+    "worker3" => "192.168.121.13",
+    "worker4" => "192.168.121.14"
+  }
+
+  nodes.each do |name, ip|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: ip
+    end
+  end
+end
+

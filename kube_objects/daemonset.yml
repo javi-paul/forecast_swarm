@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: metrics-forecast
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: metrics-forecast
+  template:
+    metadata:
+      labels:
+        app: metrics-forecast
+    spec:
+      containers:
+        - name: metrics-forecast
+          image: paulnopol/swarm_forecast:0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8501
+              hostPort: 8501
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+      terminationGracePeriodSeconds: 10

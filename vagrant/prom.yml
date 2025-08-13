@@ -1,0 +1,23 @@
+# Disable Grafana and Alertmanager
+grafana:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+# Keep Prometheus
+prometheus:
+  enabled: true
+
+# Keep node_exporter
+prometheus-node-exporter:
+  enabled: true
+
+# Keep kube-state-metrics (optional but useful for k8s metrics)
+kube-state-metrics:
+  enabled: false
+
+# Disable kubelet/service monitors you don't want
+defaultRules:
+  create: false
+
