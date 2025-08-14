@@ -22,128 +22,147 @@ ARIMA_D = st.sidebar.slider("ARIMA d", 0, 2, 1)
 ARIMA_Q = st.sidebar.slider("ARIMA q", 0, 5, 2)
 RETRAIN_INTERVAL = 5
 
+metrics = ["cpu", "memory"]#, "disk", "network"]
+metrics_info = {
+        "cpu": {
+            "caption": "Total usage of the CPU in %",
+            "unit": "%"
+        },
+        "memory": {
+            "caption": "Total usage of the main memory in %",
+            "unit": "%"
+        }
+    }
+
 # --- STATE ---
-if "cpu_data" not in st.session_state:
-    st.session_state.cpu_data = deque(maxlen=WINDOW_SIZE)
-    st.session_state.timestamps = deque(maxlen=WINDOW_SIZE)
+if "metrics_data" not in st.session_state:
+    st.session_state.metrics_data = {}
+    st.session_state.timestamps = {}
+    st.session_state.forecast = {}
+    st.session_state.step_counter = {}
+    st.session_state.model_fit = {}
+    st.session_state.last_forecast = {}
+    for metric in metrics:
+        st.session_state.metrics_data[metric] = deque(maxlen=WINDOW_SIZE)
+        st.session_state.timestamps[metric] = deque(maxlen=WINDOW_SIZE)
+        st.session_state.forecast[metric] = []
+        st.session_state.step_counter[metric] = 0
+        st.session_state.model_fit[metric] = None
+        st.session_state.last_forecast[metric] = []
 
-    initial_data = data_collector.load_initial_data(
-        "cpu",
-        node=os.getenv('NODE_NAME'),
-        w_size=WINDOW_SIZE,
-        s_interval=SAMPLING_INTERVAL
-    )
-
-    for entry in initial_data[0]['values']:
-        st.session_state.cpu_data.append(float(entry[1]))
-        st.session_state.timestamps.append(
-            pd.to_datetime(entry[0], unit='s', utc=True)
+        initial_data = data_collector.load_initial_data(
+            metric,
+            node=os.getenv('NODE_NAME'),
+            w_size=WINDOW_SIZE,
+            s_interval=SAMPLING_INTERVAL
         )
 
-    st.session_state.forecast = []
-
-    st.session_state.step_counter = 0
-    st.session_state.model_fit = None
-    st.session_state.last_forecast = []
+        for entry in initial_data[0]['values']:
+            st.session_state.metrics_data[metric].append(float(entry[1]))
+            st.session_state.timestamps[metric].append(
+                pd.to_datetime(entry[0], unit='s', utc=True)
+            )  
 
 # --- TITLE ---
-st.title("Real-Time CPU Monitoring & Forecasting")
-st.caption("Using Holt’s Exponential Smoothing and Kalman ARIMA (SARIMA) models")
+st.title("Real-Time metrics forecasting")
 
-# --- DATA COLLECTION ---
-cpu = data_collector.get_data("cpu", node=os.getenv('NODE_NAME'))
-if not cpu:
-    st.warning("No CPU data available. Please check your Prometheus setup.")
-    time.sleep(SAMPLING_INTERVAL)
-    st.rerun()
+for metric in metrics:
+    # --- DATA COLLECTION ---
+    data = data_collector.get_data(metric, node=os.getenv('NODE_NAME'))
+    if not data:
+        st.warning(f"No {metric} data available. Please check your Prometheus setup.")
+        time.sleep(SAMPLING_INTERVAL)
+        st.rerun()
 
-cpu = float(cpu[0]['value'][1])
+    value = float(data[0]['value'][1])
 
-# check if cpu is a valid number
-if not isinstance(cpu, (int, float)) or np.isnan(cpu) or cpu < 0 or cpu > 100:
-    st.warning("Invalid CPU data received. Please check your Prometheus setup.")
-    time.sleep(SAMPLING_INTERVAL)
-    st.rerun()
+    # check if value is a valid number
+    if not isinstance(value, (int, float)) or np.isnan(value) or value < 0 or value > 100:
+        st.warning(f"Invalid {metric} data received. Please check your Prometheus setup.")
+        time.sleep(SAMPLING_INTERVAL)
+        st.rerun()
 
-timestamp = pd.Timestamp.now(tz='UTC')
+    timestamp = pd.Timestamp.now(tz='UTC')
 
-st.session_state.cpu_data.append(cpu)
-st.session_state.timestamps.append(timestamp)
-st.session_state.step_counter += 1
+    st.session_state.metrics_data[metric].append(value)
+    st.session_state.timestamps[metric].append(timestamp)
+    st.session_state.step_counter[metric] += 1
 
 
-# --- FORECAST ---
-forecast_times = []
-forecast_holt = []
-forecast_karima = []
+    # --- FORECAST ---
+    forecast_times = []
+    forecast_holt = []
+    forecast_karima = []
 
-if len(st.session_state.cpu_data) >= 5:
-    try:
-        model = Holt(list(st.session_state.cpu_data), initialization_method="estimated")
-        fit = model.fit(smoothing_level=SMOOTHING_LEVEL, smoothing_trend=SMOOTHING_TREND, optimized=True)
-        forecast_h = fit.forecast(FORECAST_STEPS)
-        forecast_h = np.clip(forecast_h, 0, 100)
+    if len(st.session_state.metrics_data[metric]) >= 5:
+        try:
+            model = Holt(list(st.session_state.metrics_data[metric]), initialization_method="estimated")
+            fit = model.fit(smoothing_level=SMOOTHING_LEVEL, smoothing_trend=SMOOTHING_TREND, optimized=True)
+            forecast_h = fit.forecast(FORECAST_STEPS)
+            forecast_h = np.clip(forecast_h, 0, 100)
 
-        # Set the first forecast value to the last actual value
-        forecast_holt = [st.session_state.cpu_data[-1]] + list(forecast_h[1:])
-        
-        # Generate forecast timestamps
-        last_time = st.session_state.timestamps[-1]
-        forecast_times = [last_time + pd.Timedelta(seconds=SAMPLING_INTERVAL * (i)) for i in range(FORECAST_STEPS)]
-    except Exception as e:
-        st.warning(f"Holt forecast error: {e}")
+            # Set the first forecast value to the last actual value
+            forecast_holt = [st.session_state.metrics_data[metric][-1]] + list(forecast_h[1:])
 
-if len(st.session_state.cpu_data) > ARIMA_P + ARIMA_Q + ARIMA_D + 5:
-    try:
-        # Only retrain every N steps
-        if st.session_state.step_counter % RETRAIN_INTERVAL == 0 or st.session_state.model_fit is None:
-            model = SARIMAX(
-                list(st.session_state.cpu_data),
-                order=(ARIMA_P, ARIMA_D, ARIMA_Q),
-                enforce_stationarity=False,
-                enforce_invertibility=False
-            )
-            st.session_state.model_fit = model.fit(disp=False)
+            # Generate forecast timestamps
+            last_time = st.session_state.timestamps[metric][-1]
+            forecast_times = [last_time + pd.Timedelta(seconds=SAMPLING_INTERVAL * (i)) for i in range(FORECAST_STEPS)]
+        except Exception as e:
+            st.warning(f"Holt forecast error: {e}")
 
-        forecast_ka = st.session_state.model_fit.forecast(steps=FORECAST_STEPS)
-        forecast_ka = np.clip(forecast_ka, 0, 100)
+    if len(st.session_state.metrics_data[metric]) > ARIMA_P + ARIMA_Q + ARIMA_D + 5:
+        try:
+            # Only retrain every N steps
+            if st.session_state.step_counter[metric] % RETRAIN_INTERVAL == 0 or st.session_state.model_fit[metric] is None:
+                model = SARIMAX(
+                    list(st.session_state.metrics_data[metric]),
+                    order=(ARIMA_P, ARIMA_D, ARIMA_Q),
+                    enforce_stationarity=False,
+                    enforce_invertibility=False
+                )
+                st.session_state.model_fit[metric] = model.fit(disp=False)
 
-        forecast_karima = [st.session_state.cpu_data[-1]] + list(forecast_ka[1:])
-        last_time = st.session_state.timestamps[-1]
-        forecast_times = [
-            last_time + pd.Timedelta(seconds=SAMPLING_INTERVAL * i)
-            for i in range(FORECAST_STEPS)
-        ]
-        st.session_state.last_forecast = (forecast_times, forecast_karima)
-    except Exception as e:
-        st.warning(f"Karima forecast error: {e}")
-        st.session_state.last_forecast = ([], [])
+            forecast_ka = st.session_state.model_fit[metric].forecast(steps=FORECAST_STEPS)
+            forecast_ka = np.clip(forecast_ka, 0, 100)
 
-# --- PLOT ---
-history_df = pd.DataFrame({
-    "timestamp": list(st.session_state.timestamps),
-    "CPU (%)": list(st.session_state.cpu_data)
-})
+            forecast_karima = [st.session_state.metrics_data[metric][-1]] + list(forecast_ka[1:])
+            last_time = st.session_state.timestamps[metric][-1]
+            forecast_times = [
+                last_time + pd.Timedelta(seconds=SAMPLING_INTERVAL * i)
+                for i in range(FORECAST_STEPS)
+            ]
+            st.session_state.last_forecast = (forecast_times, forecast_karima)
+        except Exception as e:
+            st.warning(f"Karima forecast error: {e}")
+            st.session_state.last_forecast[metric] = ([], [])
 
-forecast_df_holt = pd.DataFrame({
-    "timestamp": forecast_times,
-    "Holt Forecast (%)": forecast_holt
-})
+    # --- PLOT ---
+    history_df = pd.DataFrame({
+        "timestamp": list(st.session_state.timestamps[metric]),
+        f"{metric} ({metrics_info[metric]['unit']})": list(st.session_state.metrics_data[metric])
+    })
 
-forecast_df_karima = pd.DataFrame({
-    "timestamp": forecast_times[:len(forecast_karima)],
-    "Karima Forecast (%)": forecast_karima
-})
+    forecast_df_holt = pd.DataFrame({
+        "timestamp": forecast_times,
+        f"Holt Forecast ({metrics_info[metric]['unit']})": forecast_holt
+    })
 
-combined_df = history_df.merge(forecast_df_holt, on="timestamp", how="outer")
-combined_df = combined_df.merge(forecast_df_karima, on="timestamp", how="outer")
-combined_df = combined_df.sort_values("timestamp")
+    forecast_df_karima = pd.DataFrame({
+        "timestamp": forecast_times[:len(forecast_karima)],
+        f"Karima Forecast ({metrics_info[metric]['unit']})": forecast_karima
+    })
 
-# Display in Berlin time
-display_df = combined_df.copy()
-display_df['timestamp'] = display_df['timestamp'].dt.tz_convert('Europe/Berlin')
+    combined_df = history_df.merge(forecast_df_holt, on="timestamp", how="outer")
+    combined_df = combined_df.merge(forecast_df_karima, on="timestamp", how="outer")
+    combined_df = combined_df.sort_values("timestamp")
 
-st.line_chart(display_df.set_index("timestamp"))
+    # Display in Berlin time
+    st.caption(metrics_info[metric]['caption'])
+
+    display_df = combined_df.copy()
+    display_df['timestamp'] = display_df['timestamp'].dt.tz_convert('Europe/Berlin')
+
+    st.line_chart(display_df.set_index("timestamp"))
 
 # --- AUTO REFRESH ---
 if SAMPLING_INTERVAL > 0:

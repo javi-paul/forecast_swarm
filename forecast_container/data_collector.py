@@ -32,4 +32,6 @@ def get_data(metric, node):
 def get_query(metric, node):
     if metric == "cpu":
         query = f'100 - (avg by (nodename) (avg by (instance) (rate(node_cpu_seconds_total{{mode="idle"}}[1m])) * on(instance) group_left(nodename) node_uname_info{{nodename="{node}"}}) * 100)'
+    elif metric == "memory":
+        query = f'100 * (1 - (avg by (nodename) (node_memory_MemAvailable_bytes * on(instance) group_left(nodename) node_uname_info{{nodename="{node}"}}) / avg by (nodename) (node_memory_MemTotal_bytes * on(instance) group_left(nodename) node_uname_info{{nodename="{node}"}})))'
     return query
