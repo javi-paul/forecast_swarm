@@ -1,14 +1,35 @@
 from prometheus_api_client import PrometheusConnect
+from datetime import datetime, timedelta
 
 # Connect to Prometheus
 prometheus = PrometheusConnect(
     url="http://kube-prometheus-kube-prome-prometheus.monitoring.svc.cluster.local:9090",
+    #url="http://localhost:9090",
     disable_ssl=True
 )
 
+def load_initial_data(metric, node, w_size=100, s_interval=15):
+    end_time = datetime.now()
+    start_time = end_time - timedelta(minutes=w_size * s_interval / 60)
+    metric_data = prometheus.custom_query_range(
+        query=get_query(metric, node),
+        start_time=start_time,
+        end_time=end_time,
+        step=f"{s_interval}s"
+    )
+    return metric_data
+
+
 # We expect the returned data to be a list of dictionaries
-# Example: [{'metric': {'nodename': 'nodename'}, 'value': [timestamp, 'value']}]
-def get_data(metric):
+# Example: [{
+#           'metric': {'nodename': 'nodename'}, 
+#           'value': [timestamp, 'value']
+#          }]
+def get_data(metric, node):
+    return prometheus.custom_query(get_query(metric, node))
+
+
+def get_query(metric, node):
     if metric == "cpu":
-        query = '100 - (avg by (nodename) (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * on(instance) group_left(nodename) node_uname_info) * 100)'
-    return prometheus.custom_query(query)
+        query = f'100 - (avg by (nodename) (avg by (instance) (rate(node_cpu_seconds_total{{mode="idle"}}[1m])) * on(instance) group_left(nodename) node_uname_info{{nodename="{node}"}}) * 100)'
+    return query

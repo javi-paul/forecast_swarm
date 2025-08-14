@@ -14,10 +14,8 @@ SAMPLING_INTERVAL = st.sidebar.slider("Sampling Interval (sec)", 1, 30, 15)
 FORECAST_MINUTES = st.sidebar.slider("Forecast Horizon (minutes)", 1, 10, 5)
 FORECAST_STEPS = int((FORECAST_MINUTES * 60) / SAMPLING_INTERVAL)
 
-SMOOTHING_LEVEL = st.sidebar.slider("Holt's smoothing level (%)", 0, 100, 80)
-SMOOTHING_TREND = st.sidebar.slider("Holt's smoothing trend (%)", 0, 100, 20)
-SMOOTHING_LEVEL = SMOOTHING_LEVEL / 100
-SMOOTHING_TREND = SMOOTHING_TREND / 100
+SMOOTHING_LEVEL = st.sidebar.slider("Holt's smoothing level (%)", 0, 100, 80) / 100
+SMOOTHING_TREND = st.sidebar.slider("Holt's smoothing trend (%)", 0, 100, 20) / 100
 
 ARIMA_P = st.sidebar.slider("ARIMA p", 0, 5, 2)
 ARIMA_D = st.sidebar.slider("ARIMA d", 0, 2, 1)
@@ -28,6 +26,20 @@ RETRAIN_INTERVAL = 5
 if "cpu_data" not in st.session_state:
     st.session_state.cpu_data = deque(maxlen=WINDOW_SIZE)
     st.session_state.timestamps = deque(maxlen=WINDOW_SIZE)
+
+    initial_data = data_collector.load_initial_data(
+        "cpu",
+        node=os.getenv('NODE_NAME'),
+        w_size=WINDOW_SIZE,
+        s_interval=SAMPLING_INTERVAL
+    )
+
+    for entry in initial_data[0]['values']:
+        st.session_state.cpu_data.append(float(entry[1]))
+        st.session_state.timestamps.append(
+            pd.to_datetime(entry[0], unit='s', utc=True)
+        )
+
     st.session_state.forecast = []
 
     st.session_state.step_counter = 0
@@ -39,11 +51,13 @@ st.title("Real-Time CPU Monitoring & Forecasting")
 st.caption("Using Holt’s Exponential Smoothing and Kalman ARIMA (SARIMA) models")
 
 # --- DATA COLLECTION ---
-cpu = data_collector.get_data("cpu")
-for item in cpu:
-    if item['metric'].get('nodename') == os.getenv('NODE_NAME'):
-        cpu = float(item['value'][1])
-        break
+cpu = data_collector.get_data("cpu", node=os.getenv('NODE_NAME'))
+if not cpu:
+    st.warning("No CPU data available. Please check your Prometheus setup.")
+    time.sleep(SAMPLING_INTERVAL)
+    st.rerun()
+
+cpu = float(cpu[0]['value'][1])
 
 # check if cpu is a valid number
 if not isinstance(cpu, (int, float)) or np.isnan(cpu) or cpu < 0 or cpu > 100:
@@ -51,8 +65,7 @@ if not isinstance(cpu, (int, float)) or np.isnan(cpu) or cpu < 0 or cpu > 100:
     time.sleep(SAMPLING_INTERVAL)
     st.rerun()
 
-
-timestamp = pd.Timestamp.now()
+timestamp = pd.Timestamp.now(tz='UTC')
 
 st.session_state.cpu_data.append(cpu)
 st.session_state.timestamps.append(timestamp)
@@ -126,7 +139,11 @@ combined_df = history_df.merge(forecast_df_holt, on="timestamp", how="outer")
 combined_df = combined_df.merge(forecast_df_karima, on="timestamp", how="outer")
 combined_df = combined_df.sort_values("timestamp")
 
-st.line_chart(combined_df.set_index("timestamp"))
+# Display in Berlin time
+display_df = combined_df.copy()
+display_df['timestamp'] = display_df['timestamp'].dt.tz_convert('Europe/Berlin')
+
+st.line_chart(display_df.set_index("timestamp"))
 
 # --- AUTO REFRESH ---
 if SAMPLING_INTERVAL > 0:
