@@ -7,6 +7,7 @@ import streamlit as st
 from statsmodels.tsa.holtwinters import Holt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 import data_collector
+import forecast_analysis
 
 # --- CONFIG ---
 WINDOW_SIZE = st.sidebar.slider("Window Size", 50, 300, 100)
@@ -135,6 +136,16 @@ for metric in metrics:
         except Exception as e:
             st.warning(f"Karima forecast error: {e}")
             st.session_state.last_forecast[metric] = ([], [])
+
+    # Analyze forecast errors
+    errors = forecast_analysis.analyze_forecast(forecast_holt, forecast_karima, step_seconds=SAMPLING_INTERVAL)
+    for err in errors:
+        if err["level"] == "error":
+            st.error(err["msg"])
+        elif err["level"] == "warning":
+            st.warning(err["msg"])
+        elif err["level"] == "info":
+            st.info(err["msg"])
 
     # --- PLOT ---
     history_df = pd.DataFrame({

@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY wrapper.py .
 COPY data_collector.py .
+COPY forecast_analysis.py .
 
 EXPOSE 8501
 
