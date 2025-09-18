@@ -37,6 +37,7 @@ metrics_info = {
 
 # --- STATE ---
 if "metrics_data" not in st.session_state:
+    st.session_state.counter = 3
     st.session_state.metrics_data = {}
     st.session_state.timestamps = {}
     st.session_state.forecast = {}
@@ -62,10 +63,11 @@ if "metrics_data" not in st.session_state:
             st.session_state.metrics_data[metric].append(float(entry[1]))
             st.session_state.timestamps[metric].append(
                 pd.to_datetime(entry[0], unit='s', utc=True)
-            )  
+            )
 
 # --- TITLE ---
 st.title("Real-Time metrics forecasting")
+st.session_state.counter += 1
 
 for metric in metrics:
     # --- DATA COLLECTION ---
@@ -142,10 +144,13 @@ for metric in metrics:
     for err in errors:
         if err["level"] == "error":
             st.error(err["msg"])
+            print(f"{timestamp.strftime('%Y-%m-%d %H:%M')} [ERROR] {metric} -> {err['msg']}")
         elif err["level"] == "warning":
             st.warning(err["msg"])
+            print(f"{timestamp.strftime('%Y-%m-%d %H:%M')} [WARNING] {metric} -> {err['msg']}")
         elif err["level"] == "info":
             st.info(err["msg"])
+            print(f"{timestamp.strftime('%Y-%m-%d %H:%M')} [INFO] {metric} -> {err['msg']}")
 
     # --- PLOT ---
     history_df = pd.DataFrame({
@@ -163,6 +168,11 @@ for metric in metrics:
         f"Karima Forecast ({metrics_info[metric]['unit']})": forecast_karima
     })
 
+    if st.session_state.counter == 4:
+        print(f"{metric} history ->\n{history_df.to_csv(index=False)}")
+        print(f"{metric} holt ->\n{forecast_df_holt.to_csv(index=False)}")
+        print(f"{metric} karima ->\n{forecast_df_karima.to_csv(index=False)}")
+
     combined_df = history_df.merge(forecast_df_holt, on="timestamp", how="outer")
     combined_df = combined_df.merge(forecast_df_karima, on="timestamp", how="outer")
     combined_df = combined_df.sort_values("timestamp")
@@ -177,5 +187,7 @@ for metric in metrics:
 
 # --- AUTO REFRESH ---
 if SAMPLING_INTERVAL > 0:
+    if st.session_state.counter == 4:
+        st.session_state.counter = 0
     time.sleep(SAMPLING_INTERVAL)
     st.rerun()
