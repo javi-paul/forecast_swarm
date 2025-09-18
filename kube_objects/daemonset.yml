@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: metrics-forecast
-          image: paulnopol/swarm_forecast:0.4
+          image: paulnopol/swarm_forecast:0.5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8501
