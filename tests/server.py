@@ -7,9 +7,9 @@ import numpy as np
 
 # --- Config ---
 MAX_WORKERS = 50
-CPU_DURATION_RANGE = (1, 10)
-RAM_DURATION_RANGE = (10, 15)
-RAM_SIZE_RANGE_MB = (200, 250)
+CPU_DURATION_RANGE = (30, 45)
+RAM_DURATION_RANGE = (40, 60)
+RAM_SIZE_RANGE_MB = (100, 150)
 
 # --- Setup ---
 app = Flask(__name__)
