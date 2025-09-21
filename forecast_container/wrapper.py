@@ -10,13 +10,13 @@ import data_collector
 import forecast_analysis
 
 # --- CONFIG ---
-WINDOW_SIZE = st.sidebar.slider("Window Size", 50, 300, 100)
+WINDOW_SIZE = st.sidebar.slider("Window Size", 50, 300, 120)
 SAMPLING_INTERVAL = st.sidebar.slider("Sampling Interval (sec)", 1, 30, 15)
 FORECAST_MINUTES = st.sidebar.slider("Forecast Horizon (minutes)", 1, 10, 5)
 FORECAST_STEPS = int((FORECAST_MINUTES * 60) / SAMPLING_INTERVAL)
 
-SMOOTHING_LEVEL = st.sidebar.slider("Holt's smoothing level (%)", 0, 100, 80) / 100
-SMOOTHING_TREND = st.sidebar.slider("Holt's smoothing trend (%)", 0, 100, 20) / 100
+SMOOTHING_LEVEL = st.sidebar.slider("Holt's smoothing level (%)", 0, 100, 50) / 100
+SMOOTHING_TREND = st.sidebar.slider("Holt's smoothing trend (%)", 0, 100, 15) / 100
 
 ARIMA_P = st.sidebar.slider("ARIMA p", 0, 5, 2)
 ARIMA_D = st.sidebar.slider("ARIMA d", 0, 2, 1)
@@ -106,6 +106,10 @@ for metric in metrics:
 
             # Set the first forecast value to the last actual value
             forecast_holt = [st.session_state.metrics_data[metric][-1]] + list(forecast_h[1:])
+
+            # If holt detects a large increase, force retrain karima
+            if forecast_holt[-1] - forecast_holt[0] > 15:
+                st.session_state.step_counter[metric] = RETRAIN_INTERVAL
 
             # Generate forecast timestamps
             last_time = st.session_state.timestamps[metric][-1]
