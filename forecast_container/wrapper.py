@@ -18,9 +18,9 @@ FORECAST_STEPS = int((FORECAST_MINUTES * 60) / SAMPLING_INTERVAL)
 SMOOTHING_LEVEL = st.sidebar.slider("Holt's smoothing level (%)", 0, 100, 50) / 100
 SMOOTHING_TREND = st.sidebar.slider("Holt's smoothing trend (%)", 0, 100, 15) / 100
 
-ARIMA_P = st.sidebar.slider("ARIMA p", 0, 5, 2)
-ARIMA_D = st.sidebar.slider("ARIMA d", 0, 2, 1)
-ARIMA_Q = st.sidebar.slider("ARIMA q", 0, 5, 2)
+ARIMA_P = st.sidebar.slider("ARIMA p", 0, 5, 5)
+ARIMA_D = st.sidebar.slider("ARIMA d", 0, 2, 0)
+ARIMA_Q = st.sidebar.slider("ARIMA q", 0, 5, 0)
 RETRAIN_INTERVAL = 5
 
 metrics = ["cpu", "memory"]#, "disk", "network"]
@@ -172,7 +172,7 @@ for metric in metrics:
         f"Karima Forecast ({metrics_info[metric]['unit']})": forecast_karima
     })
 
-    if st.session_state.counter == 4:
+    if st.session_state.counter >= 4:
         print(f"{metric} history ->\n{history_df.to_csv(index=False)}")
         print(f"{metric} holt ->\n{forecast_df_holt.to_csv(index=False)}")
         print(f"{metric} karima ->\n{forecast_df_karima.to_csv(index=False)}")
@@ -191,7 +191,7 @@ for metric in metrics:
 
 # --- AUTO REFRESH ---
 if SAMPLING_INTERVAL > 0:
-    if st.session_state.counter == 4:
+    if st.session_state.counter >= 4:
         st.session_state.counter = 0
     time.sleep(SAMPLING_INTERVAL)
     st.rerun()
